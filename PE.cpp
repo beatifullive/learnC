@@ -7,7 +7,7 @@ _CRT_SECURE_NO_WARNINGS
 
 
 /** 
-* @brief 函数简要说明-read PE file
+* @brief 函数简要说明-read PE file to Buffer 
 * @param filePath    参数1 LPCSTR filePath
 * @param fileBuffer  参数2 LPSTR fileBuffer
 *
@@ -15,19 +15,20 @@ _CRT_SECURE_NO_WARNINGS
 *     -<em>false</em> fail
 *     -<em>true</em> succeed return size of file
 */
-DWORD readPeFile(IN FILE* fileBuffer)
+DWORD readPeFile(IN FILE* pfile, OUT LPVOID pFileBuffer)
 {
 	DWORD sizeOfFile;
-	if (fileBuffer)
-	{
-		free(fileBuffer);
-		printf("failed Open file!\n");
-		return -1;
-	}
-	
-	fseek(fileBuffer, 0, SEEK_END);
-	sizeOfFile = ftell(fileBuffer);
-	fseek(fileBuffer, 0, SEEK_SET);
+
+	fseek(pfile, 0, SEEK_END);
+	sizeOfFile = ftell(pfile);
+	fseek(pfile, 0, SEEK_SET);
+
+	//2.read file to malloc buffer, and return lp to buffer
+	pFileBuffer = malloc(sizeOfFile);
+	memset(pFileBuffer, 0, sizeOfFile);
+	//memcpy(pFileBuffer, pfile, sizeOfFile);
+	fread(pFileBuffer, sizeOfFile, 1, pfile);
+
 	return sizeOfFile;
 }
 
@@ -62,7 +63,7 @@ PVOID FileToMem(IN PCHAR szFilePath, long *FileSize)
 	}
 
 	fread(pFileBuffer,*FileSize,1,pFile);
-	
+
 	if (*(PSHORT)pFileBuffer!= IMAGE_DOS_SIGNATURE)
 	{
 		printf("PE not read!\n");
@@ -108,10 +109,10 @@ DWORD CopyFileBufferToImageBuffer(IN LPVOID pFileBuffer,OUT LPVOID* pImageBuffer
 	for (size_t i=0;i<pFil->NumberOfSections;i++)
 	{
 		memcpy(pTemp+pSec[i].VirtualAddress, (PUCHAR)pFileBuffer+pSec[i].PointerToRawData,pSec[i].SizeOfRawData);
-	
+
 	}
 	return 0;
-	
+
 }
 
 
@@ -154,7 +155,7 @@ DWORD foaToRva(IN PCHAR szFilePath, IN DWORD foa)
 	{
 		for (size_t i=0; i<pFil->NumberOfSections; i++)
 		{
-			
+
 			if (foa>(pSec[i].PointerToRawData) && foa<(pSec[i].PointerToRawData+pSec->SizeOfRawData))
 			{
 				// RVA = foa - PointerToRawData + VirtualAddress
@@ -191,14 +192,17 @@ int _tmain(int argc, _TCHAR* argv[])
 {
 
 	//outside function:openfile, get &file and pass to function
-	
-	CHAR* filePath = "C:\\NOTEPAD.exe";
-	FILE* fileBuffer = fopen(filePath, "r");
-	if (fileBuffer)
+
+	LPSTR filePath = "C:\\Documents and Settings\\Administrator\\My Documents\\Visual Studio 2008\\Projects\\test1\\NOTEPAD.EXE";
+	FILE* pFile = NULL;
+	LPVOID pFileBuffer =NULL;
+	pFile = fopen(filePath, "rb");
+	if (!pFile)
 	{
 		printf("Open File Failed!\n");
+		return 0;
 	}
-	printf("file size is %d.\n",readPeFile(fileBuffer));
+	printf("file size is %d.\n",readPeFile(pFile, pFileBuffer));
 
 	return 0;
 }
