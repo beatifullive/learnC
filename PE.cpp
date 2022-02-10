@@ -5,7 +5,43 @@ _CRT_SECURE_NO_WARNINGS
 
 #include "stdafx.h"
 
-PVOID FileToMem(IN PCHAR szFilePath, long *dwFileSize)
+
+/** 
+* @brief 函数简要说明-read PE file
+* @param filePath    参数1 LPCSTR filePath
+* @param fileBuffer  参数2 LPSTR fileBuffer
+*
+* @return 返回说明
+*     -<em>false</em> fail
+*     -<em>true</em> succeed return size of file
+*/
+DWORD readPeFile(IN FILE* fileBuffer)
+{
+	DWORD sizeOfFile;
+	if (fileBuffer)
+	{
+		free(fileBuffer);
+		printf("failed Open file!\n");
+		return -1;
+	}
+	
+	fseek(fileBuffer, 0, SEEK_END);
+	sizeOfFile = ftell(fileBuffer);
+	fseek(fileBuffer, 0, SEEK_SET);
+	return sizeOfFile;
+}
+
+
+/** 
+* @brief 函数简要说明-read PE file to FileBuffer
+* @param filePath    参数1 LPCSTR filePath
+* @param fileBuffer  参数2 LPSTR fileBuffer
+*
+* @return 返回说明
+*     -<em>false</em> fail
+*     -<em>true</em> succeed return size of file
+*/
+PVOID FileToMem(IN PCHAR szFilePath, long *FileSize)
 {
 
 	FILE* pFile = fopen(szFilePath, "rb");
@@ -15,17 +51,17 @@ PVOID FileToMem(IN PCHAR szFilePath, long *dwFileSize)
 		return NULL;
 	}
 	fseek(pFile,0,SEEK_END);
-	*dwFileSize =ftell(pFile);
+	*FileSize =ftell(pFile);
 	fseek(pFile,0,SEEK_SET);
 
-	PCHAR pFileBuffer = (PCHAR)malloc(*dwFileSize);
+	PCHAR pFileBuffer = (PCHAR)malloc(*FileSize);
 	if (!pFileBuffer)
 	{
 		printf("cannot malloc filebuffer!\n");
 		return NULL;
 	}
 
-	fread(pFileBuffer,*dwFileSize,1,pFile);
+	fread(pFileBuffer,*FileSize,1,pFile);
 	
 	if (*(PSHORT)pFileBuffer!= IMAGE_DOS_SIGNATURE)
 	{
@@ -38,6 +74,16 @@ PVOID FileToMem(IN PCHAR szFilePath, long *dwFileSize)
 
 }
 
+//2.copy filebuffer to imagebuffer
+/** 
+* @brief 函数简要说明-read PE file
+* @param filePath    参数1 LPCSTR filePath
+* @param fileBuffer  参数2 LPSTR fileBuffer
+*
+* @return 返回说明
+*     -<em>false</em> fail
+*     -<em>true</em> succeed return size of file
+*/
 DWORD CopyFileBufferToImageBuffer(IN LPVOID pFileBuffer,OUT LPVOID* pImageBuffer)
 {
 	PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)pFileBuffer;
@@ -68,6 +114,17 @@ DWORD CopyFileBufferToImageBuffer(IN LPVOID pFileBuffer,OUT LPVOID* pImageBuffer
 	
 }
 
+
+//tools:foa To Rva
+/** 
+* @brief 函数简要说明-read PE file
+* @param filePath    参数1 LPCSTR filePath
+* @param fileBuffer  参数2 LPSTR fileBuffer
+*
+* @return 返回说明
+*     -<em>false</em> fail
+*     -<em>true</em> succeed return size of file
+*/
 DWORD foaToRva(IN PCHAR szFilePath, IN DWORD foa)
 {
 
@@ -112,23 +169,36 @@ DWORD foaToRva(IN PCHAR szFilePath, IN DWORD foa)
 		free(pFileBuffer);
 		return 0;
 	}
-
-
-
 }
+
+//tools:Rva To foa
+/** 
+* @brief 函数简要说明-read PE file
+* @param filePath    参数1 LPCSTR filePath
+* @param fileBuffer  参数2 LPSTR fileBuffer
+*
+* @return 返回说明
+*     -<em>false</em> fail
+*     -<em>true</em> succeed return size of file
+*/
+DWORD RvaTofoa(IN LPSTR filebuffer, IN DWORD RVA)
+{
+	return 0;
+}
+
 
 int _tmain(int argc, _TCHAR* argv[])
 {
 
-	CHAR targetFilePath[20] = "C:\\vmmreg32.dll";
-
-	long dwFileSize =0;
-	PVOID pFileBuffer;
-	pFileBuffer=FileToMem(targetFilePath,&dwFileSize);
-	printf("filesize is %d.\n",dwFileSize);
-
+	//outside function:openfile, get &file and pass to function
 	
-	getchar();
+	CHAR* filePath = "C:\\NOTEPAD.exe";
+	FILE* fileBuffer = fopen(filePath, "r");
+	if (fileBuffer)
+	{
+		printf("Open File Failed!\n");
+	}
+	printf("file size is %d.\n",readPeFile(fileBuffer));
+
 	return 0;
 }
-
