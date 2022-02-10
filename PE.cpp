@@ -15,7 +15,7 @@ _CRT_SECURE_NO_WARNINGS
 *     -<em>false</em> fail
 *     -<em>true</em> succeed return size of file
 */
-DWORD readPeFile(IN FILE* pfile, OUT LPVOID pFileBuffer)
+DWORD readPeFile(IN FILE* pfile, OUT LPVOID* pFileBuffer)
 {
 	DWORD sizeOfFile;
 
@@ -24,68 +24,26 @@ DWORD readPeFile(IN FILE* pfile, OUT LPVOID pFileBuffer)
 	fseek(pfile, 0, SEEK_SET);
 
 	//2.read file to malloc buffer, and return lp to buffer
-	pFileBuffer = malloc(sizeOfFile);
-	memset(pFileBuffer, 0, sizeOfFile);
-	//memcpy(pFileBuffer, pfile, sizeOfFile);
-	fread(pFileBuffer, sizeOfFile, 1, pfile);
+	*pFileBuffer = malloc(sizeOfFile);
+	memset(*pFileBuffer, 0, sizeOfFile);
+	//memcpy(*pFileBuffer, pfile, sizeOfFile);
+	fread(*pFileBuffer, sizeOfFile, 1, pfile);
 
 	return sizeOfFile;
 }
 
 
-/** 
-* @brief 函数简要说明-read PE file to FileBuffer
-* @param filePath    参数1 LPCSTR filePath
-* @param fileBuffer  参数2 LPSTR fileBuffer
-*
-* @return 返回说明
-*     -<em>false</em> fail
-*     -<em>true</em> succeed return size of file
-*/
-PVOID FileToMem(IN PCHAR szFilePath, long *FileSize)
-{
-
-	FILE* pFile = fopen(szFilePath, "rb");
-	if (!pFile)
-	{
-		printf("Cannot open file!\n");
-		return NULL;
-	}
-	fseek(pFile,0,SEEK_END);
-	*FileSize =ftell(pFile);
-	fseek(pFile,0,SEEK_SET);
-
-	PCHAR pFileBuffer = (PCHAR)malloc(*FileSize);
-	if (!pFileBuffer)
-	{
-		printf("cannot malloc filebuffer!\n");
-		return NULL;
-	}
-
-	fread(pFileBuffer,*FileSize,1,pFile);
-
-	if (*(PSHORT)pFileBuffer!= IMAGE_DOS_SIGNATURE)
-	{
-		printf("PE not read!\n");
-		free(pFileBuffer);
-	}
-
-	fclose(pFile);
-	return pFileBuffer;
-
-}
-
-//2.copy filebuffer to imagebuffer
+//2.copy file Buffer extend to image Buffer
 /** 
 * @brief 函数简要说明-read PE file
-* @param filePath    参数1 LPCSTR filePath
-* @param fileBuffer  参数2 LPSTR fileBuffer
+* @param filePath    参数1 LPCSTR pFileBuffer
+* @param fileBuffer  参数2 LPSTR pImageBuffer
 *
 * @return 返回说明
 *     -<em>false</em> fail
 *     -<em>true</em> succeed return size of file
 */
-DWORD CopyFileBufferToImageBuffer(IN LPVOID pFileBuffer,OUT LPVOID* pImageBuffer)
+DWORD fileBufferToImageBuffer(IN LPVOID pFileBuffer,OUT LPVOID* pImageBuffer)
 {
 	PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)pFileBuffer;
 	PIMAGE_NT_HEADERS pNth = (PIMAGE_NT_HEADERS)((PUCHAR)pFileBuffer+pDos->e_lfanew);
@@ -95,22 +53,79 @@ DWORD CopyFileBufferToImageBuffer(IN LPVOID pFileBuffer,OUT LPVOID* pImageBuffer
 
 	//分配拉伸后的内存
 	DWORD dwImageSize = pOpo->SizeOfImage;
-	PUCHAR pTemp = (PUCHAR)malloc(dwImageSize);
-	if (!pTemp)
+	*pImageBuffer = (PUCHAR)malloc(dwImageSize);
+	if (!*pImageBuffer)
 	{
-		printf("Memory malloc error!\n");
+		printf("Image Buffer malloc error!\n");
+		free(pFileBuffer);
 		return 0;
 	}
-	memset(pTemp,0,dwImageSize);
+	memset(*pImageBuffer,0,dwImageSize);
 	//1.copy header 
-	memcpy(pTemp,pFileBuffer,pOpo->SizeOfHeaders);
+	memcpy(*pImageBuffer,pFileBuffer,pOpo->SizeOfHeaders);
 
 	//2.copy section
 	for (size_t i=0;i<pFil->NumberOfSections;i++)
 	{
-		memcpy(pTemp+pSec[i].VirtualAddress, (PUCHAR)pFileBuffer+pSec[i].PointerToRawData,pSec[i].SizeOfRawData);
+		memcpy(**pImageBuffer+pSec[i].VirtualAddress, (PUCHAR)pFileBuffer+pSec[i].PointerToRawData,pSec[i].SizeOfRawData);
 
 	}
+	return 0;
+
+}
+
+//3.copy image Buffer to file Buffer
+/** 
+* @brief 函数简要说明-read PE file
+* @param filePath    参数1  LPVOID pImageBuffer
+* @param fileBuffer  参数2  LPVOID pFileBuffer
+*
+* @return 返回说明
+*     -<em>false</em> fail
+*     -<em>true</em> succeed 
+*/
+DWORD imageBufferToFileBuffer(IN LPVOID pImageBuffer)
+{
+	PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)pImageBuffer;
+	PIMAGE_NT_HEADERS pNth = (PIMAGE_NT_HEADERS)((PUCHAR)pImageBuffer+pDos->e_lfanew);
+	PIMAGE_FILE_HEADER pImage = (PIMAGE_FILE_HEADER)((PUCHAR)pNth+4);
+	PIMAGE_OPTIONAL_HEADER pOpo = (PIMAGE_OPTIONAL_HEADER)((PUCHAR)pImage+IMAGE_SIZEOF_FILE_HEADER);
+	PIMAGE_SECTION_HEADER pSec = (PIMAGE_SECTION_HEADER)((PUCHAR)pOpo+pImage->SizeOfOptionalHeader);
+
+	//分配拉伸后的内存
+	int numOfSections = pImage->NumberOfSections - 1;
+	DWORD dwFileSize = pSec[numOfSections].PointerToRawData + pSec[numOfSections].SizeOfRawData;
+	PUCHAR pTemp = (PUCHAR)malloc(dwFileSize);
+	if (!pTemp)
+	{
+		printf("Image Buffer malloc error!\n");
+		free(pImageBuffer);
+		return 0;
+	}
+	memset(pTemp,0,dwFileSize);
+	//1.copy header 
+	memcpy(pTemp,pImageBuffer,pOpo->SizeOfHeaders);
+
+	//2.copy section
+	for (size_t i=0;i<pImage->NumberOfSections;i++)
+	{
+		memcpy(pTemp+pSec[i].PointerToRawData, (PUCHAR)pImageBuffer+pSec[i].VirtualAddress,pSec[i].Misc.VirtualSize);
+
+	}
+
+	//3.write to new file and save
+	FILE* tempFile;
+	tempFile = fopen("c:\\notepad11.exe","w");
+	if (!tempFile)
+	{
+		printf("Create new file failed!\n");
+		free(pImageBuffer);
+		return 0;
+	}
+	fwrite(pTemp, dwFileSize, 1, tempFile);
+	free(pImageBuffer);
+	fclose(tempFile);
+
 	return 0;
 
 }
@@ -182,7 +197,7 @@ DWORD foaToRva(IN PCHAR szFilePath, IN DWORD foa)
 *     -<em>false</em> fail
 *     -<em>true</em> succeed return size of file
 */
-DWORD RvaTofoa(IN LPSTR filebuffer, IN DWORD RVA)
+DWORD RvaTofoa(IN PCHAR szFilePath, IN DWORD RVA)
 {
 	return 0;
 }
@@ -193,16 +208,21 @@ int _tmain(int argc, _TCHAR* argv[])
 
 	//outside function:openfile, get &file and pass to function
 
-	LPSTR filePath = "C:\\Documents and Settings\\Administrator\\My Documents\\Visual Studio 2008\\Projects\\test1\\NOTEPAD.EXE";
+	LPSTR filePath = "C:\\NOTEPAD.EXE";
 	FILE* pFile = NULL;
 	LPVOID pFileBuffer =NULL;
+	LPVOID pImageBuffer =NULL;
+
 	pFile = fopen(filePath, "rb");
 	if (!pFile)
 	{
 		printf("Open File Failed!\n");
 		return 0;
 	}
-	printf("file size is %d.\n",readPeFile(pFile, pFileBuffer));
+	printf("file size is %d.\n",readPeFile(pFile, &pFileBuffer));
+
+	fileBufferToImageBuffer(pFileBuffer, &pImageBuffer);
+	imageBufferToFileBuffer(pImageBuffer);
 
 	return 0;
 }
