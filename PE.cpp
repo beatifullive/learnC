@@ -43,10 +43,10 @@ DWORD readPeFile(IN FILE* pfile, OUT LPVOID* pFileBuffer)
 *     -<em>false</em> fail
 *     -<em>true</em> succeed return size of file
 */
-DWORD fileBufferToImageBuffer(IN LPVOID pFileBuffer,OUT LPVOID* pImageBuffer)
+DWORD fileBufferToImageBuffer(IN LPVOID* pFileBuffer,OUT LPVOID* pImageBuffer)
 {
-	PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)pFileBuffer;
-	PIMAGE_NT_HEADERS pNth = (PIMAGE_NT_HEADERS)((PUCHAR)pFileBuffer+pDos->e_lfanew);
+	PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)*pFileBuffer;
+	PIMAGE_NT_HEADERS pNth = (PIMAGE_NT_HEADERS)((PUCHAR)*pFileBuffer+pDos->e_lfanew);
 	PIMAGE_FILE_HEADER pFil = (PIMAGE_FILE_HEADER)((PUCHAR)pNth+4);
 	PIMAGE_OPTIONAL_HEADER pOpo = (PIMAGE_OPTIONAL_HEADER)((PUCHAR)pFil+IMAGE_SIZEOF_FILE_HEADER);
 	PIMAGE_SECTION_HEADER pSec = (PIMAGE_SECTION_HEADER)((PUCHAR)pOpo+pFil->SizeOfOptionalHeader);
@@ -57,17 +57,20 @@ DWORD fileBufferToImageBuffer(IN LPVOID pFileBuffer,OUT LPVOID* pImageBuffer)
 	if (!*pImageBuffer)
 	{
 		printf("Image Buffer malloc error!\n");
-		free(pFileBuffer);
 		return 0;
 	}
 	memset(*pImageBuffer,0,dwImageSize);
 	//1.copy header 
-	memcpy(*pImageBuffer,pFileBuffer,pOpo->SizeOfHeaders);
+	memcpy(*pImageBuffer,*pFileBuffer,pOpo->SizeOfHeaders);
 
 	//2.copy section
 	for (size_t i=0;i<pFil->NumberOfSections;i++)
 	{
-		memcpy(**pImageBuffer+pSec[i].VirtualAddress, (PUCHAR)pFileBuffer+pSec[i].PointerToRawData,pSec[i].SizeOfRawData);
+		memcpy(
+			LPVOID((DWORD)*pImageBuffer+pSec[i].VirtualAddress), 
+			LPVOID((DWORD)*pFileBuffer+pSec[i].PointerToRawData),
+			pSec[i].SizeOfRawData
+			);
 
 	}
 	return 0;
@@ -84,10 +87,10 @@ DWORD fileBufferToImageBuffer(IN LPVOID pFileBuffer,OUT LPVOID* pImageBuffer)
 *     -<em>false</em> fail
 *     -<em>true</em> succeed 
 */
-DWORD imageBufferToFileBuffer(IN LPVOID pImageBuffer)
+DWORD imageBufferToFileBuffer(IN LPVOID* pImageBuffer)
 {
-	PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)pImageBuffer;
-	PIMAGE_NT_HEADERS pNth = (PIMAGE_NT_HEADERS)((PUCHAR)pImageBuffer+pDos->e_lfanew);
+	PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)*pImageBuffer;
+	PIMAGE_NT_HEADERS pNth = (PIMAGE_NT_HEADERS)((PUCHAR)*pImageBuffer+pDos->e_lfanew);
 	PIMAGE_FILE_HEADER pImage = (PIMAGE_FILE_HEADER)((PUCHAR)pNth+4);
 	PIMAGE_OPTIONAL_HEADER pOpo = (PIMAGE_OPTIONAL_HEADER)((PUCHAR)pImage+IMAGE_SIZEOF_FILE_HEADER);
 	PIMAGE_SECTION_HEADER pSec = (PIMAGE_SECTION_HEADER)((PUCHAR)pOpo+pImage->SizeOfOptionalHeader);
@@ -104,12 +107,12 @@ DWORD imageBufferToFileBuffer(IN LPVOID pImageBuffer)
 	}
 	memset(pTemp,0,dwFileSize);
 	//1.copy header 
-	memcpy(pTemp,pImageBuffer,pOpo->SizeOfHeaders);
+	memcpy(pTemp,*pImageBuffer,pOpo->SizeOfHeaders);
 
 	//2.copy section
 	for (size_t i=0;i<pImage->NumberOfSections;i++)
 	{
-		memcpy(pTemp+pSec[i].PointerToRawData, (PUCHAR)pImageBuffer+pSec[i].VirtualAddress,pSec[i].Misc.VirtualSize);
+		memcpy(pTemp+pSec[i].PointerToRawData, LPVOID((DWORD)*pImageBuffer+pSec[i].VirtualAddress),pSec[i].Misc.VirtualSize);
 
 	}
 
@@ -119,11 +122,10 @@ DWORD imageBufferToFileBuffer(IN LPVOID pImageBuffer)
 	if (!tempFile)
 	{
 		printf("Create new file failed!\n");
-		free(pImageBuffer);
+
 		return 0;
 	}
 	fwrite(pTemp, dwFileSize, 1, tempFile);
-	free(pImageBuffer);
 	fclose(tempFile);
 
 	return 0;
@@ -219,10 +221,10 @@ int _tmain(int argc, _TCHAR* argv[])
 		printf("Open File Failed!\n");
 		return 0;
 	}
-	printf("file size is %d.\n",readPeFile(pFile, &pFileBuffer));
+printf("file size is %d.\n",readPeFile(pFile, &pFileBuffer));
 
-	fileBufferToImageBuffer(pFileBuffer, &pImageBuffer);
-	imageBufferToFileBuffer(pImageBuffer);
+	fileBufferToImageBuffer(&pFileBuffer, &pImageBuffer);
+	imageBufferToFileBuffer(&pImageBuffer);
 
 	return 0;
 }
