@@ -118,7 +118,7 @@ DWORD imageBufferToFileBuffer(IN LPVOID* pImageBuffer)
 
 	//3.write to new file and save
 	FILE* tempFile;
-	tempFile = fopen("c:\\notepad11.exe","w");
+	tempFile = fopen("c:\\notepad11.exe","rb+");
 	if (!tempFile)
 	{
 		printf("Create new file failed!\n");
@@ -173,18 +173,18 @@ DWORD foaToRva(IN PCHAR szFilePath, IN DWORD foa)
 		for (size_t i=0; i<pFil->NumberOfSections; i++)
 		{
 
-			if (foa>(pSec[i].PointerToRawData) && foa<(pSec[i].PointerToRawData+pSec->SizeOfRawData))
+			if (foa>(pSec[i].PointerToRawData) && foa<(pSec[i].PointerToRawData+pSec[i].SizeOfRawData))
 			{
 				// RVA = foa - PointerToRawData + VirtualAddress
 				free(pFileBuffer);
-				return foa - pSec[i].PointerToRawData + pSec->VirtualAddress;
+				return foa - pSec[i].PointerToRawData + pSec[i].VirtualAddress;
 			}
 		}
 
 	} else 
 	{
 		printf("无法转换地址.\n");
-		free(pFileBuffer);
+		fclose(pFileBuffer);
 		return 0;
 	}
 }
@@ -201,7 +201,47 @@ DWORD foaToRva(IN PCHAR szFilePath, IN DWORD foa)
 */
 DWORD RvaTofoa(IN PCHAR szFilePath, IN DWORD RVA)
 {
-	return 0;
+	FILE* pFileBuffer = fopen(szFilePath, "rb");
+	if (!pFileBuffer)
+	{
+		printf("Cannot open file!\n");
+		return NULL;
+	}
+	PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)pFileBuffer;
+	PIMAGE_NT_HEADERS pNth = (PIMAGE_NT_HEADERS)((PUCHAR)pFileBuffer+pDos->e_lfanew);
+	PIMAGE_FILE_HEADER pFil = (PIMAGE_FILE_HEADER)((PUCHAR)pNth+4);
+	PIMAGE_OPTIONAL_HEADER pOpo = (PIMAGE_OPTIONAL_HEADER)((PUCHAR)pFil+IMAGE_SIZEOF_FILE_HEADER);
+	PIMAGE_SECTION_HEADER pSec = (PIMAGE_SECTION_HEADER)((PUCHAR)pOpo+pFil->SizeOfOptionalHeader);
+	printf("Export Table RVA: %x \n",pOpo->DataDirectory[0].VirtualAddress);
+	printf("Export Table Size: %x \n",pOpo->DataDirectory[0].Size);
+
+	//1.foa<optionalheader 或 sectionalignment = filealignment 直接返回
+	if (RVA<pFil->SizeOfOptionalHeader || (pOpo->SectionAlignment==pOpo->FileAlignment))
+	{
+		free(pFileBuffer);
+		return RVA;
+	}
+
+	//2.foa>option
+	if (RVA<pOpo->SizeOfImage)
+	{
+		for (size_t i=0; i<pFil->NumberOfSections; i++)
+		{
+
+			if (RVA>(pSec[i].VirtualAddress) && RVA<(pSec[i].VirtualAddress+pSec[i].Misc.VirtualSize))
+			{
+				// foa = RVA + PointerToRawData - VirtualAddress
+				free(pFileBuffer);
+				return RVA + pSec[i].PointerToRawData - pSec[i].VirtualAddress;
+			}
+		}
+
+	} else 
+	{
+		printf("无法转换地址.\n");
+		fclose(pFileBuffer);
+		return 0;
+	}
 }
 
 
@@ -221,7 +261,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		printf("Open File Failed!\n");
 		return 0;
 	}
-printf("file size is %d.\n",readPeFile(pFile, &pFileBuffer));
+	printf("file size is %d.\n",readPeFile(pFile, &pFileBuffer));
 
 	fileBufferToImageBuffer(&pFileBuffer, &pImageBuffer);
 	imageBufferToFileBuffer(&pImageBuffer);
