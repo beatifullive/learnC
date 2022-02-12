@@ -6,7 +6,7 @@ _CRT_SECURE_NO_WARNINGS
 #include "stdafx.h"
 
 
-/** 
+/** 11
 * @brief 函数简要说明-read PE file to Buffer 
 * @param filePath    参数1 LPCSTR filePath
 * @param fileBuffer  参数2 LPSTR fileBuffer
