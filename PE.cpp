@@ -5,8 +5,17 @@ _CRT_SECURE_NO_WARNINGS
 
 #include "stdafx.h"
 
+BYTE shellcode[] = 
+{
+	0x6a,00,0x6a,00,0x6a,00,0x6a,00,
+	0xe8,00,00,00,00,
+	0xe9,00,00,00,00
+};
 
-/** 11
+#define messageboxAddr 0x77d5050b
+
+
+/** 
 * @brief 函数简要说明-read PE file to Buffer 
 * @param filePath    参数1 LPCSTR filePath
 * @param fileBuffer  参数2 LPSTR fileBuffer
@@ -118,7 +127,7 @@ DWORD imageBufferToFileBuffer(IN LPVOID* pImageBuffer)
 
 	//3.write to new file and save
 	FILE* tempFile;
-	tempFile = fopen("c:\\notepad11.exe","rb+");
+	tempFile = fopen("c:\\notepad11.exe","wb+");
 	if (!tempFile)
 	{
 		printf("Create new file failed!\n");
@@ -245,6 +254,87 @@ DWORD RvaTofoa(IN PCHAR szFilePath, IN DWORD RVA)
 }
 
 
+//3.copy code to image buffer to file Buffer
+/** 
+* @brief 函数简要说明-read PE file
+* @param filePath    参数1  LPVOID* pImageBuffer
+*
+* @return 返回说明
+*     -<em>false</em> fail
+*     -<em>true</em> succeed 
+*/
+VOID copyCodeToImagebuffer(IN LPVOID* pImageBuffer)
+{
+	PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)*pImageBuffer;
+	PIMAGE_NT_HEADERS pNth = (PIMAGE_NT_HEADERS)((PUCHAR)*pImageBuffer+pDos->e_lfanew);
+	PIMAGE_FILE_HEADER pImage = (PIMAGE_FILE_HEADER)((PUCHAR)pNth+4);
+	PIMAGE_OPTIONAL_HEADER pOpo = (PIMAGE_OPTIONAL_HEADER)((PUCHAR)pImage+IMAGE_SIZEOF_FILE_HEADER);
+	PIMAGE_SECTION_HEADER pSec = (PIMAGE_SECTION_HEADER)((PUCHAR)pOpo+pImage->SizeOfOptionalHeader);
+	PBYTE pcodeBegin = NULL;
+	PBYTE pjmpBegin = NULL;
+	PBYTE pcallBegin = NULL;
+	
+
+
+	//分配拉伸后的内存
+	int numOfSections = pImage->NumberOfSections - 1;
+	DWORD dwFileSize = pSec[numOfSections].PointerToRawData + pSec[numOfSections].SizeOfRawData;
+	PUCHAR pTemp = (PUCHAR)malloc(dwFileSize);
+	if (!pTemp)
+	{
+		printf("Image Buffer malloc error!\n");
+		free(pImageBuffer);
+		return ;
+	}
+	memset(pTemp,0,dwFileSize);
+	//1.copy header 
+	memcpy(pTemp,*pImageBuffer,pOpo->SizeOfHeaders);
+
+
+
+	//2.write code to image buffer
+	//decide the space is enough for shellcode
+	if ( sizeof(shellcode) > pSec[0].SizeOfRawData - pSec[0].Misc.VirtualSize)
+	{
+		printf("the space is not enough!\n");
+		free(*pImageBuffer);
+		return ;
+	}
+
+	pcodeBegin = (PBYTE)((DWORD)*pImageBuffer + pSec[0].VirtualAddress + pSec[0].Misc.VirtualSize);
+	pcallBegin = (PBYTE)(messageboxAddr - ((DWORD)pcodeBegin + 0xd));
+	pjmpBegin = (PBYTE)((DWORD)pOpo->AddressOfEntryPoint - ((DWORD)pcallBegin + 0xd + 0x5));
+	pOpo->AddressOfEntryPoint = (DWORD)pcodeBegin - (DWORD)pImageBuffer;
+
+	memcpy(pcodeBegin, (VOID*)shellcode, sizeof(shellcode));
+	*(PDWORD)(pcodeBegin + 0x9) = (DWORD)pcallBegin;
+	*(PDWORD)(pcodeBegin + 0x9 + 0x5) = (DWORD)pjmpBegin;
+	pOpo->AddressOfEntryPoint = (DWORD)pcodeBegin;
+
+
+	//3.copy section
+	for (size_t i=0;i<pImage->NumberOfSections;i++)
+	{
+		memcpy(pTemp+pSec[i].PointerToRawData, LPVOID((DWORD)*pImageBuffer+pSec[i].VirtualAddress),pSec[i].Misc.VirtualSize);
+
+	}
+
+
+	//4.write to new file and save
+	FILE* tempFile;
+	tempFile = fopen("c:\\notepad11.exe","wb+");
+	if (!tempFile)
+	{
+		printf("Create new file failed!\n");
+		return ;
+	}
+	fwrite(pTemp, dwFileSize, 1, tempFile);
+	fclose(tempFile);
+
+	return ;
+
+}
+
 int _tmain(int argc, _TCHAR* argv[])
 {
 
@@ -254,6 +344,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	FILE* pFile = NULL;
 	LPVOID pFileBuffer =NULL;
 	LPVOID pImageBuffer =NULL;
+	
 
 	pFile = fopen(filePath, "rb");
 	if (!pFile)
@@ -264,7 +355,9 @@ int _tmain(int argc, _TCHAR* argv[])
 	printf("file size is %d.\n",readPeFile(pFile, &pFileBuffer));
 
 	fileBufferToImageBuffer(&pFileBuffer, &pImageBuffer);
-	imageBufferToFileBuffer(&pImageBuffer);
+//	imageBufferToFileBuffer(&pImageBuffer);
+	copyCodeToImagebuffer(&pImageBuffer);
+
 
 	return 0;
 }
