@@ -271,9 +271,9 @@ VOID copyCodeToImagebuffer(IN LPVOID* pImageBuffer)
 	PIMAGE_OPTIONAL_HEADER pOpo = (PIMAGE_OPTIONAL_HEADER)((PUCHAR)pImage+IMAGE_SIZEOF_FILE_HEADER);
 	PIMAGE_SECTION_HEADER pSec = (PIMAGE_SECTION_HEADER)((PUCHAR)pOpo+pImage->SizeOfOptionalHeader);
 	PBYTE pcodeBegin = NULL;
-	PBYTE pjmpBegin = NULL;
-	PBYTE pcallBegin = NULL;
-	
+	PBYTE pjmpAddr = NULL;
+	PBYTE pcallAddr = NULL;
+
 
 
 	//分配拉伸后的内存
@@ -287,12 +287,9 @@ VOID copyCodeToImagebuffer(IN LPVOID* pImageBuffer)
 		return ;
 	}
 	memset(pTemp,0,dwFileSize);
-	//1.copy header 
-	memcpy(pTemp,*pImageBuffer,pOpo->SizeOfHeaders);
 
 
-
-	//2.write code to image buffer
+	//1.write code to image buffer
 	//decide the space is enough for shellcode
 	if ( sizeof(shellcode) > pSec[0].SizeOfRawData - pSec[0].Misc.VirtualSize)
 	{
@@ -302,20 +299,22 @@ VOID copyCodeToImagebuffer(IN LPVOID* pImageBuffer)
 	}
 
 	pcodeBegin = (PBYTE)((DWORD)*pImageBuffer + pSec[0].VirtualAddress + pSec[0].Misc.VirtualSize);
-	pcallBegin = (PBYTE)(messageboxAddr - ((DWORD)pcodeBegin + 0xd));
-	pjmpBegin = (PBYTE)((DWORD)pOpo->AddressOfEntryPoint - ((DWORD)pcallBegin + 0xd + 0x5));
+	pcallAddr = (PBYTE)(messageboxAddr - ((DWORD)pcodeBegin + 0xd - (DWORD)*pImageBuffer + pOpo->ImageBase));
+	pjmpAddr = (PBYTE)(((DWORD)pOpo->AddressOfEntryPoint + pOpo->ImageBase) - ((DWORD)pcodeBegin + 0xd + 0x5 - (DWORD)*pImageBuffer + pOpo->ImageBase));
 	pOpo->AddressOfEntryPoint = (DWORD)pcodeBegin - (DWORD)pImageBuffer;
 
 	memcpy(pcodeBegin, (VOID*)shellcode, sizeof(shellcode));
-	*(PDWORD)(pcodeBegin + 0x9) = (DWORD)pcallBegin;
-	*(PDWORD)(pcodeBegin + 0x9 + 0x5) = (DWORD)pjmpBegin;
-	pOpo->AddressOfEntryPoint = (DWORD)pcodeBegin;
+	*(PDWORD)(pcodeBegin + 0x9) = (DWORD)pcallAddr;
+	*(PDWORD)(pcodeBegin + 0x9 + 0x5) = (DWORD)pjmpAddr;
+	pOpo->AddressOfEntryPoint = (DWORD)pcodeBegin-(DWORD)*pImageBuffer;
 
+	//2.copy header 
+		memcpy(pTemp,*pImageBuffer,pOpo->SizeOfHeaders);
 
 	//3.copy section
 	for (size_t i=0;i<pImage->NumberOfSections;i++)
 	{
-		memcpy(pTemp+pSec[i].PointerToRawData, LPVOID((DWORD)*pImageBuffer+pSec[i].VirtualAddress),pSec[i].Misc.VirtualSize);
+		memcpy((void*)((DWORD)pTemp+pSec[i].PointerToRawData), LPVOID((DWORD)*pImageBuffer+pSec[i].VirtualAddress),pSec[i].SizeOfRawData);
 
 	}
 
@@ -344,7 +343,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	FILE* pFile = NULL;
 	LPVOID pFileBuffer =NULL;
 	LPVOID pImageBuffer =NULL;
-	
+
 
 	pFile = fopen(filePath, "rb");
 	if (!pFile)
@@ -355,7 +354,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	printf("file size is %d.\n",readPeFile(pFile, &pFileBuffer));
 
 	fileBufferToImageBuffer(&pFileBuffer, &pImageBuffer);
-//	imageBufferToFileBuffer(&pImageBuffer);
+	//	imageBufferToFileBuffer(&pImageBuffer);
 	copyCodeToImagebuffer(&pImageBuffer);
 
 
